@@ -13,6 +13,7 @@ import tqdm as tqdm
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+import pickle
 
 N_GRAM = 1
 
@@ -41,13 +42,14 @@ class CsvLoader(object):
 
 	def createDataFrame(self,sentences):
 		data = []
-		for sent in senteces:
+		for i,sent in enumerate(sentences):
+			print('Sentence',i,'out of',len(sentences))
 			for idx, word in enumerate(sent):
-				for s in sentence[max(idx-N_GRAM,0) : min(idx+N_GRAM, len(sent))+1]:
+				for s in sent[max(idx-N_GRAM,0) : min(idx+N_GRAM, len(sent))+1]:
 					if s!=word:
 						data.append([word,s])
 
-		df = pd.DataFram(data, columns= ['input', 'label'])
+		df = pd.DataFrame(data, columns= ['input', 'label'])
 		return df
 
 
