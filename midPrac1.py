@@ -14,8 +14,12 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 import pickle
+import keras
+from keras.preprocessing.text import text_to_word_sequence
+# define the document
 
 N_GRAM = 1
+MAX_SENTENCE_LENGTH = 25
 
 class CsvLoader(object):
 	def __init__(self,filename):
@@ -24,8 +28,8 @@ class CsvLoader(object):
 	def tokenizeCsv(self,sentences):
 		t = Tokenizer()
 		t.fit_on_texts(sentences)
-		encoded_words = t.texts_to_matrix(sentences, mode='count')
-		return encoded_words
+		#encoded_words = t.texts_to_sequences(sentences)
+		return t
 
 	def getCodedWords(self):
 		csv_reader = csv.DictReader(self.file,fieldnames=['Category','Title','Summary'])
@@ -36,14 +40,18 @@ class CsvLoader(object):
 		sentences = []
 
 		for row in csv_reader:
-			sentences.append(row['Summary']);
+			words = text_to_word_sequence(row['Summary'])
+			sentence = ""
+			for w in words:
+				sentence+=w+" "
+			sentences.append(sentence);
 		
 		return self.tokenizeCsv(sentences), sentences
 
 	def createDataFrame(self,sentences):
 		data = []
 		for i,sent in enumerate(sentences):
-			print('Sentence',i,'out of',len(sentences))
+			#print('Sentence',i,'out of',len(sentences))
 			for idx, word in enumerate(sent):
 				for s in sent[max(idx-N_GRAM,0) : min(idx+N_GRAM, len(sent))+1]:
 					if s!=word:
@@ -54,12 +62,68 @@ class CsvLoader(object):
 
 
 
-csvTrain = CsvLoader('./train.csv')
-codedWords, sentences = csvTrain.getCodedWords()
-#print(len(words[10]))
-INPUT_DIM = len(codedWords[0])
-df = csvTrain.createDataFrame(sentences)
-print(df['input'][:10],df['label'][:10])
+
+
+csvTrain = CsvLoader('./smallTrain.csv')
+
+# Gets series of sentences/documents
+token, sentences = csvTrain.getCodedWords() 
+
+# Create Tokenizer
+t = Tokenizer()
+# Create unique indexes for words
+t.fit_on_texts(sentences)
+# Vocab size
+vSize = len(t.word_index) + 1
+# Turn each document into a bunch of indexes that map to words
+encoded_docs = t.texts_to_sequences(sentences)
+
+# Knobs
+MAX_SENTENCE_LENGTH = 20
+EMBED_INPUT_DIM = vSize
+EMBED_OUTPUT_DIM = 2
+
+# Pad the docs to maintain input shape
+padded_docs = keras.preprocessing.sequence.pad_sequences(encoded_docs, maxlen=MAX_SENTENCE_LENGTH, padding='post')
+
+# Create model
+model = keras.Sequential()
+# Embedding layer to learn embeddings with input size = Max sentence length
+model.add(keras.layers.Embedding(EMBED_INPUT_DIM,EMBED_OUTPUT_DIM,input_length=MAX_SENTENCE_LENGTH))
+# Train model
+model.compile('rmsprop','mse')
+
+#output_array = model.predict(input_array)
+#output_array = np.reshape(output_array,newshape=[MAX_SENTENCE_LENGTH,EMBED_OUTPUT_DIM])
+
+# Turn documents into a series of word embeddings using model
+def encode_docs(docs):
+	out = model.predict(docs)
+	return out
+
+# Turning docs into word embeddings
+embedded_docs_by_words = encode_docs(padded_docs[:4])
+print(embedded_docs_by_words)
+
+# Function to turn query into similar embedding
+def embedQuery(model,que,t):
+	padded_queries = []
+	newQueries = []
+	for q in que:
+		words = text_to_word_sequence(q)
+		query=""
+		for i,w in enumerate(words):
+			query+=w+" "
+		newQueries.append(query)
+	codeQuery = t.texts_to_sequences(newQueries)
+	padded_query = keras.preprocessing.sequence.pad_sequences(codeQuery, maxlen=MAX_SENTENCE_LENGTH, padding='post')
+	#padded_queries.append(padded_queries)
+	return padded_query
+
+q = ["This is a test ok?"]
+# Embed query
+padQ = embedQuery(model,q,t)
+#print(model.predict(codeQ))
 
 
 
@@ -84,33 +148,4 @@ print(df['input'][:10],df['label'][:10])
 
 
 
-
-
-'''
-import xml.etree.ElementTree as ET
-
-
-class XmlLoader(object):
-	def __init__(self,filename):
-		self.filename = filename
-		self.file = open(filename, mode='r')
-
-	def printLines(self,numLines):
-		for i in range(numLines):
-			print(self.file.readline())
-
-	def parseXML(self,numLines):
-		tree = ET.parse(self.filename)
-		root = tree.getroot()
-
-		for i,child in enumerate(root):
-			print(i)
-			if(i>numLines):
-				break
-			print(child.tag, child.attrib)
-
-
-xmlFileTrain = XmlLoader('./enwiki-latest-abstract.xml')
-xmlFileTrain.parseXML(100);
-'''
 
