@@ -136,7 +136,7 @@ def minimize_doc_embedding(doc_dict):
 min_doc_codes = minimize_doc_embedding(doc_codes)
 
 # Function to turn query into similar embedding
-def embedQuery(model,que,t):
+def indexQuery(model,que,t):
 	padded_queries = []
 	newQueries = []
 	for q in que:
@@ -150,7 +150,7 @@ def embedQuery(model,que,t):
 	#padded_queries.append(padded_queries)
 	return padded_query
 
-def minimize_query(q_dict):
+def minimize_query_embedding(q_dict):
 	new_dict = {}
 	for q in q_dict.keys():
 		newArr = []
@@ -166,7 +166,7 @@ def minimize_query(q_dict):
 
 qList = ["usatoday retail sales bounced back bit july and new claims jobless benefits fell week the government said thursday indicating the economy is improving from a midsummer slump"]
 # Embed query
-padQ = embedQuery(model,qList,t)
+padQ = indexQuery(model,qList,t)
 coded_qs = model.predict(padQ)
 
 # Create dict of queries and codes
@@ -175,7 +175,7 @@ for q,code in zip(qList,coded_qs):
 	q_dict[q] = code
 
 # Create query embedding
-min_q_dict = minimize_query(q_dict)
+min_q_dict = minimize_query_embedding(q_dict)
 #print(min_q_dict)
 
 #print(min_doc_codes)
