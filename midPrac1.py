@@ -16,6 +16,9 @@ import pandas as pd
 import pickle
 import keras
 from keras.preprocessing.text import text_to_word_sequence
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy import spatial
+from copy import copy
 # define the document
 
 N_GRAM = 1
@@ -67,21 +70,21 @@ class CsvLoader(object):
 csvTrain = CsvLoader('./smallTrain.csv')
 
 # Gets series of sentences/documents
-token, sentences = csvTrain.getCodedWords() 
+token, docs = csvTrain.getCodedWords() 
 
 # Create Tokenizer
 t = Tokenizer()
 # Create unique indexes for words
-t.fit_on_texts(sentences)
+t.fit_on_texts(docs)
 # Vocab size
 vSize = len(t.word_index) + 1
 # Turn each document into a bunch of indexes that map to words
-encoded_docs = t.texts_to_sequences(sentences)
+encoded_docs = t.texts_to_sequences(docs)
 
 # Knobs
 MAX_SENTENCE_LENGTH = 20
 EMBED_INPUT_DIM = vSize
-EMBED_OUTPUT_DIM = 2
+EMBED_OUTPUT_DIM = 32
 
 # Pad the docs to maintain input shape
 padded_docs = keras.preprocessing.sequence.pad_sequences(encoded_docs, maxlen=MAX_SENTENCE_LENGTH, padding='post')
@@ -97,13 +100,40 @@ model.compile('rmsprop','mse')
 #output_array = np.reshape(output_array,newshape=[MAX_SENTENCE_LENGTH,EMBED_OUTPUT_DIM])
 
 # Turn documents into a series of word embeddings using model
-def encode_docs(docs):
-	out = model.predict(docs)
+def encode_docs(in_docs):
+	out = model.predict(in_docs)
 	return out
 
-# Turning docs into word embeddings
-embedded_docs_by_words = encode_docs(padded_docs[:4])
-print(embedded_docs_by_words)
+
+
+
+# Turning docs into word embeddings (Change to add docs)
+embedded_docs_by_words = encode_docs(padded_docs[:40])
+doc_codes = {}
+for code,d in zip(embedded_docs_by_words,docs[:40]):
+	doc_codes[d] = code
+
+#print(doc_codes)
+
+
+def minimize_doc_embedding(doc_dict):
+	new_dict = {}
+	for key in doc_dict.keys():
+		newArr = []
+		for dim in range(EMBED_OUTPUT_DIM):
+			#newArr = []
+			sumArr = 0
+			for i in range(MAX_SENTENCE_LENGTH):
+				sumArr+=doc_dict[key][i][dim]
+				#print('Document:',key,'number col:',dim,'number row:',i,'=',doc_dict[key][i][dim])
+			newArr.append(float(sumArr)/float(MAX_SENTENCE_LENGTH))
+			#print('Document:',key,'number col:',dim,'=',float(sumArr)/float(MAX_SENTENCE_LENGTH))
+		new_dict[key] = newArr
+	return new_dict
+
+
+
+min_doc_codes = minimize_doc_embedding(doc_codes)
 
 # Function to turn query into similar embedding
 def embedQuery(model,que,t):
@@ -120,11 +150,54 @@ def embedQuery(model,que,t):
 	#padded_queries.append(padded_queries)
 	return padded_query
 
-q = ["This is a test ok?"]
-# Embed query
-padQ = embedQuery(model,q,t)
-#print(model.predict(codeQ))
+def minimize_query(q_dict):
+	new_dict = {}
+	for q in q_dict.keys():
+		newArr = []
+		for dim in range(EMBED_OUTPUT_DIM):
+			sumArr = 0
+			for i in range(MAX_SENTENCE_LENGTH):
+				sumArr+=q_dict[q][i][dim]
+			newArr.append(float(sumArr)/float(MAX_SENTENCE_LENGTH))
+			#print('Document:',key,'number col:',dim,'=',float(sumArr)/float(MAX_SENTENCE_LENGTH))
+		new_dict[q] = newArr
+	return new_dict
 
+
+qList = ["usatoday retail sales bounced back bit july and new claims jobless benefits fell week the government said thursday indicating the economy is improving from a midsummer slump"]
+# Embed query
+padQ = embedQuery(model,qList,t)
+coded_qs = model.predict(padQ)
+
+# Create dict of queries and codes
+q_dict = {}
+for q,code in zip(qList,coded_qs):
+	q_dict[q] = code
+
+# Create query embedding
+min_q_dict = minimize_query(q_dict)
+#print(min_q_dict)
+
+#print(min_doc_codes)
+
+
+def get_most_sim(q_sim_dict,d_sim_dict):
+	for q in q_sim_dict.keys():
+		min_dist = 100000000
+		min_d = "None"
+		for d in d_sim_dict.keys():
+			#temp = cosine_similarity((q_sim_dict[q]),(d_sim_dict[d]))
+			# Should switch to cosine sim
+			temp = abs(spatial.distance.cosine(q_sim_dict[q],d_sim_dict[d]))
+			if(temp<min_dist):
+				min_dist = temp
+				min_d = d
+			#print('Distance metric:',temp,'with document:',d)
+		print('Most similar to query:',q,"is document:",min_d)
+
+
+
+get_most_sim(min_q_dict,min_doc_codes)
 
 
 
