@@ -41,7 +41,7 @@ class datasetLoader(object):
 
 	def getCodedWords(self):
 		#csv_reader = csv.DictReader(self.file,fieldnames=['Category','Title','Summary'])
-		news,labels = this.get_x_and_y()
+		news,labels = self.get_x_and_y()
 		ignore_words = set(stopwords.words('english'))
 		manual_stops = ['(',')']
 		ignore_words = list(ignore_words)+list(set(manual_stops))
@@ -49,7 +49,7 @@ class datasetLoader(object):
 		sentences = []
 
 		for row in news:
-			words = text_to_word_sequence(row['Summary'])
+			words = text_to_word_sequence(row)
 			sentence = ""
 			for w in words:
 				sentence+=w+" "
@@ -59,59 +59,18 @@ class datasetLoader(object):
 
 
 d = datasetLoader('./newsfiles/newsfiles/')
-news,labels = d.get_x_and_y()
-#print(news)
-print('-'*60)
-print(labels)
+# Gets series of sentences/documents
+token,docs,labels = d.getCodedWords()
 
-'''
-class CsvLoader(object):
-	def __init__(self,filename):
-		self.file = open(filename, mode='r')
+doc_label_map = {}
+for i,lab in enumerate(labels):
+	doc_label_map[lab] = docs[i]
+#print(doc_label_map)
 
-	def tokenizeCsv(self,sentences):
-		t = Tokenizer()
-		t.fit_on_texts(sentences)
-		#encoded_words = t.texts_to_sequences(sentences)
-		return t
-
-	def getCodedWords(self):
-		csv_reader = csv.DictReader(self.file,fieldnames=['Category','Title','Summary'])
-		ignore_words = set(stopwords.words('english'))
-		manual_stops = ['(',')']
-		ignore_words = list(ignore_words)+list(set(manual_stops))
-		
-		sentences = []
-
-		for row in csv_reader:
-			words = text_to_word_sequence(row['Summary'])
-			sentence = ""
-			for w in words:
-				sentence+=w+" "
-			sentences.append(sentence);
-		
-		return self.tokenizeCsv(sentences), sentences
-
-	def createDataFrame(self,sentences):
-		data = []
-		for i,sent in enumerate(sentences):
-			#print('Sentence',i,'out of',len(sentences))
-			for idx, word in enumerate(sent):
-				for s in sent[max(idx-N_GRAM,0) : min(idx+N_GRAM, len(sent))+1]:
-					if s!=word:
-						data.append([word,s])
-
-		df = pd.DataFrame(data, columns= ['input', 'label'])
-		return df
-'''
-
-
-
-
-csvTrain = CsvLoader('./smallTrain.csv')
+#csvTrain = CsvLoader('./smallTrain.csv')
 
 # Gets series of sentences/documents
-token, docs = csvTrain.getCodedWords() 
+#token, docs = csvTrain.getCodedWords() 
 
 # Create Tokenizer
 t = Tokenizer()
@@ -123,7 +82,7 @@ vSize = len(t.word_index) + 1
 encoded_docs = t.texts_to_sequences(docs)
 
 # Knobs
-MAX_SENTENCE_LENGTH = 20
+MAX_SENTENCE_LENGTH = 30
 EMBED_INPUT_DIM = vSize
 EMBED_OUTPUT_DIM = 32
 
@@ -207,14 +166,18 @@ def minimize_query_embedding(q_dict):
 	return new_dict
 
 
-qList = ["usatoday retail sales bounced back bit july and new claims jobless benefits fell week the government said thursday indicating the economy is improving from a midsummer slump",
-		"America Online on Thursday said it  plans to sell a low-priced PC targeting low-income and minority service."]
+#qList = ["usatoday retail sales bounced back bit july and new claims jobless benefits fell week the government said thursday indicating the economy is improving from a midsummer slump",
+#		"America Online on Thursday said it  plans to sell a low-priced PC targeting low-income and minority service."]
+
+qList = labels
+
 # Embed query
 padQ = indexQuery(model,qList,t)
 coded_qs = model.predict(padQ)
 
 # Create dict of queries and codes
 q_dict = {}
+
 for q,code in zip(qList,coded_qs):
 	q_dict[q] = code
 
@@ -226,21 +189,69 @@ min_q_dict = minimize_query_embedding(q_dict)
 
 
 def get_most_sim(q_sim_dict,d_sim_dict):
+	num_right1 = 0
+	num_right5 = 0
+	num_right10 = 0
+	total = 0
+
 	for q in q_sim_dict.keys():
+		doc_sort = []
+		doc_tracker = {}
+		label_tracker = {}
+
 		min_dist = 100000000
 		min_d = "None"
 		for d in d_sim_dict.keys():
 			#temp = cosine_similarity((q_sim_dict[q]),(d_sim_dict[d]))
 			# Should switch to cosine sim
 			temp = abs(spatial.distance.cosine(q_sim_dict[q],d_sim_dict[d]))
+			doc_tracker[temp] = d
+			doc_sort.append(temp)
+
 			if(temp<min_dist):
 				min_dist = temp
 				min_d = d
 			#if(d[0:3]=="new"):
 				#print('Distance metric:',temp,'with document:',d)
-		print('-'*60)
-		print('Most similar to query:',q)
-		print("is document:",min_d)
+
+
+		#print('-'*60)
+		#print('Most similar to query:',q)
+		#print("Is document:",min_d)
+		#print("Real document:",doc_label_map[q])
+		if(q=="None"):
+			continue
+
+		doc_sort.sort()
+		if(min_d==doc_label_map[q]):
+			num_right1+=1
+			#print("YES")
+			#print(min_d)
+		else:
+			#print("NO")
+			for metric in doc_sort[:5]:
+				if(doc_label_map[q] == doc_tracker[metric]):
+					#print("IN TOP 5")
+					num_right5+=1
+					break
+			else:
+				for m in doc_sort[:10]:
+					if(doc_label_map[q] == doc_tracker[m]):
+						#print("IN TOP 10")
+						num_right10+=1
+						break
+
+			#if(doc_label_map in doc_tracker[doc_sort[:5]]):
+			#	print("IN TOP 5")
+
+		total+=1
+	print("Guessing top 1 would be:",str((float(1)/float(total))*100)+"%")
+	print("Top 1 Correct:",str((float(num_right1)/float(total))*100)+"%")
+	print("Guessing top 5 would be:",str((float(5)/float(total))*100)+"%")
+	print("Top 5 Correct:",str((float(num_right5+num_right1)/float(total))*100)+"%")
+	print("Guessing top 10 would be:",str((float(10)/float(total))*100)+"%")
+	print("Top 10 Correct:",str((float(num_right10+num_right5+num_right1)/float(total))*100)+"%")
+	print("Total docs:",total)
 
 
 
